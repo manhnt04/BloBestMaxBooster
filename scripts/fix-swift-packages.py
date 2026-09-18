@@ -210,9 +210,120 @@ def patch_expo_modules_jsi_sources():
         content = content.replace("self.scheduler = expo.RuntimeScheduler(scheduler, fn)", "self.scheduler = expo.RuntimeScheduler.create(scheduler, fn)")
         content = content.replace("return expo.HostFunctionClosure(context, call, deallocate)", "return expo.HostFunctionClosure.create(context, call, deallocate)")
 
+        # Fix Swift 6 data-race / sending errors for raw pointer captures into JavaScriptActor.assumeIsolated
+        old_getter = """    func getter(
+      context: UnsafeMutableRawPointer,
+      propertyName: UnsafePointer<CChar>,
+      resultPtr: UnsafeMutablePointer<facebook.jsi.Value>
+    ) -> Bool {
+      let propertyName = String(cString: propertyName)
+      nonisolated(unsafe) let resultPtr = resultPtr
+
+      return withGuaranteedContext(context) { (context: HostObjectContext, runtime) in
+        return JavaScriptActor.assumeIsolated {
+          return forwardingSwiftErrorsToJS(runtime: runtime) {
+            try context.get(propertyName).writeJSIValue(to: resultPtr)
+          }
+        }
+      }
+    }"""
+        new_getter = """    func getter(
+      context: UnsafeMutableRawPointer,
+      propertyName: UnsafePointer<CChar>,
+      resultPtr: UnsafeMutablePointer<facebook.jsi.Value>
+    ) -> Bool {
+      let propertyName = String(cString: propertyName)
+      let resultAddr = UInt(bitPattern: resultPtr)
+
+      return withGuaranteedContext(context) { (context: HostObjectContext, runtime) in
+        return JavaScriptActor.assumeIsolated {
+          let resultPtr = UnsafeMutablePointer<facebook.jsi.Value>(bitPattern: resultAddr)!
+          return forwardingSwiftErrorsToJS(runtime: runtime) {
+            try context.get(propertyName).writeJSIValue(to: resultPtr)
+          }
+        }
+      }
+    }"""
+        if old_getter in content:
+            content = content.replace(old_getter, new_getter)
+
+        old_call1 = """    nonisolated(unsafe) let thisPtr = thisPtr
+    nonisolated(unsafe) let argumentsPtr = argumentsPtr
+    nonisolated(unsafe) let resultPtr = resultPtr
+
+    // See `withGuaranteedContext` for why neither the context nor the runtime is retained here, and
+    // why the result is written to the caller's slot instead of being returned.
+    return withGuaranteedContext(context) { (context: HostFunctionContext, runtime) in
+      return JavaScriptActor.assumeIsolated {
+        return forwardingSwiftErrorsToJS(runtime: runtime) {
+          let this = UnsafeMutablePointer(mutating: thisPtr).move()
+          let arguments = JavaScriptValuesBuffer(runtime, start: argumentsPtr, count: argumentsCount)
+          let thisValue = JavaScriptValue(runtime, this)
+          try context.call(thisValue, consume arguments).writeJSIValue(to: resultPtr)
+        }
+      }
+    }"""
+        new_call1 = """    let thisAddr = UInt(bitPattern: thisPtr)
+    let argumentsAddr = UInt(bitPattern: argumentsPtr)
+    let resultAddr = UInt(bitPattern: resultPtr)
+
+    // See `withGuaranteedContext` for why neither the context nor the runtime is retained here, and
+    // why the result is written to the caller's slot instead of being returned.
+    return withGuaranteedContext(context) { (context: HostFunctionContext, runtime) in
+      return JavaScriptActor.assumeIsolated {
+        let thisPtr = UnsafePointer<facebook.jsi.Value>(bitPattern: thisAddr)!
+        let argumentsPtr = UnsafePointer<facebook.jsi.Value>(bitPattern: argumentsAddr)!
+        let resultPtr = UnsafeMutablePointer<facebook.jsi.Value>(bitPattern: resultAddr)!
+        return forwardingSwiftErrorsToJS(runtime: runtime) {
+          let this = UnsafeMutablePointer(mutating: thisPtr).move()
+          let arguments = JavaScriptValuesBuffer(runtime, start: argumentsPtr, count: argumentsCount)
+          let thisValue = JavaScriptValue(runtime, this)
+          try context.call(thisValue, consume arguments).writeJSIValue(to: resultPtr)
+        }
+      }
+    }"""
+        if old_call1 in content:
+            content = content.replace(old_call1, new_call1)
+
+        old_call2 = """    nonisolated(unsafe) let thisPtr = thisPtr
+    nonisolated(unsafe) let argumentsPtr = argumentsPtr
+    nonisolated(unsafe) let resultPtr = resultPtr
+
+    // See `withGuaranteedContext` for why neither the context nor the runtime is retained here, and
+    // why the result is written to the caller's slot instead of being returned.
+    return withGuaranteedContext(context) { (context: UnownedThisHostFunctionContext, runtime) in
+      return JavaScriptActor.assumeIsolated {
+        return forwardingSwiftErrorsToJS(runtime: runtime) {
+          let arguments = JavaScriptValuesBuffer(runtime, start: argumentsPtr, count: argumentsCount)
+          let thisValue = JavaScriptUnownedValue(runtime.pointee, thisPtr)
+          try context.call(thisValue, consume arguments).writeJSIValue(to: resultPtr)
+        }
+      }
+    }"""
+        new_call2 = """    let thisAddr = UInt(bitPattern: thisPtr)
+    let argumentsAddr = UInt(bitPattern: argumentsPtr)
+    let resultAddr = UInt(bitPattern: resultPtr)
+
+    // See `withGuaranteedContext` for why neither the context nor the runtime is retained here, and
+    // why the result is written to the caller's slot instead of being returned.
+    return withGuaranteedContext(context) { (context: UnownedThisHostFunctionContext, runtime) in
+      return JavaScriptActor.assumeIsolated {
+        let thisPtr = UnsafePointer<facebook.jsi.Value>(bitPattern: thisAddr)!
+        let argumentsPtr = UnsafePointer<facebook.jsi.Value>(bitPattern: argumentsAddr)!
+        let resultPtr = UnsafeMutablePointer<facebook.jsi.Value>(bitPattern: resultAddr)!
+        return forwardingSwiftErrorsToJS(runtime: runtime) {
+          let arguments = JavaScriptValuesBuffer(runtime, start: argumentsPtr, count: argumentsCount)
+          let thisValue = JavaScriptUnownedValue(runtime.pointee, thisPtr)
+          try context.call(thisValue, consume arguments).writeJSIValue(to: resultPtr)
+        }
+      }
+    }"""
+        if old_call2 in content:
+            content = content.replace(old_call2, new_call2)
+
         with open(rt_path, 'w', encoding='utf-8', newline='\n') as f:
             f.write(content)
-        print("Fixed JavaScriptRuntime.swift (trailing comma, appendPropName, create initializers)")
+        print("Fixed JavaScriptRuntime.swift (trailing comma, appendPropName, create initializers, pointer captures)")
 
     # 6c. Fix Escapable in JavaScriptRef.swift and JavaScriptValue.swift
     ref_path = os.path.join(base_dir, 'Runtime', 'JavaScriptRef.swift')
