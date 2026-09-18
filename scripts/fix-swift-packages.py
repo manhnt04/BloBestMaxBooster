@@ -134,14 +134,19 @@ def patch_cxx_headers():
             target = "using PropNameIds = std::vector<facebook::jsi::PropNameID>;"
             helper = """using PropNameIds = std::vector<facebook::jsi::PropNameID>;
 
-  inline static void appendPropName(PropNameIds &vector, facebook::jsi::Runtime &runtime, const std::string &name) {
+  inline static void appendPropName(PropNameIds &vector, facebook::jsi::IRuntime &runtime, const std::string &name) {
     vector.push_back(facebook::jsi::PropNameID::forUtf8(runtime, name));
   }"""
-            if 'appendPropName' not in text and target in text:
+            if 'facebook::jsi::Runtime &runtime' in text:
+                text = text.replace('facebook::jsi::Runtime &runtime', 'facebook::jsi::IRuntime &runtime')
+                with open(hoc_path, 'w', encoding='utf-8', newline='\n') as f:
+                    f.write(text)
+                print("Updated HostObjectCallbacks.h appendPropName to use IRuntime")
+            elif 'appendPropName' not in text and target in text:
                 text = text.replace(target, helper)
                 with open(hoc_path, 'w', encoding='utf-8', newline='\n') as f:
                     f.write(text)
-                print("Patched HostObjectCallbacks.h with appendPropName helper")
+                print("Patched HostObjectCallbacks.h with appendPropName helper (IRuntime)")
         except Exception as e:
             print(f"Warning patching HostObjectCallbacks.h: {e}")
 
