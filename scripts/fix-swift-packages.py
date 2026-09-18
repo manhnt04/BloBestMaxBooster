@@ -68,17 +68,15 @@ def patch_cxx_headers():
 
             # Add factory methods for Swift init()
             factory_code = """
-  SWIFT_NAME("init()")
-  SWIFT_RETURNS_RETAINED static RuntimeScheduler* create() {
+  SWIFT_RETURNS_RETAINED static RuntimeScheduler* _Nonnull create() {
     return new RuntimeScheduler();
   }
 
-  SWIFT_NAME("init(_:_:)")
-  SWIFT_RETURNS_RETAINED static RuntimeScheduler* create(void *scheduler, ScheduleFn fn) {
+  SWIFT_RETURNS_RETAINED static RuntimeScheduler* _Nonnull create(void *scheduler, ScheduleFn fn) {
     return new RuntimeScheduler(scheduler, fn);
   }
 """
-            if 'SWIFT_NAME("init()")' not in text:
+            if 'create()' not in text:
                 target_ctor = 'RuntimeScheduler() {}'
                 if target_ctor in text:
                     text = text.replace(target_ctor, target_ctor + factory_code)
@@ -99,23 +97,12 @@ def patch_cxx_headers():
             with open(hfc_path, 'r', encoding='utf-8-sig') as f:
                 text = f.read()
 
-            macros = """#ifndef SWIFT_RETURNS_UNRETAINED
-#define SWIFT_RETURNS_UNRETAINED __attribute__((swift_attr("returns_unretained")))
-#endif
-#ifndef SWIFT_NAME
-#define SWIFT_NAME(X) __attribute__((swift_name(X)))
-#endif
-"""
-            if 'SWIFT_NAME' not in text:
-                text = macros + '\n' + text
-
             hfc_factory = """
-  SWIFT_NAME("init(_:_:_:)")
-  SWIFT_RETURNS_UNRETAINED static HostFunctionClosure* create(Context context, Closure closure, Deallocator deallocator) {
+  static HostFunctionClosure* _Nonnull create(Context context, Closure closure, Deallocator deallocator) {
     return new HostFunctionClosure(context, closure, deallocator);
   }
 """
-            if 'SWIFT_NAME("init(_:_:_:)")' not in text:
+            if 'create(' not in text:
                 target_ctor = 'explicit HostFunctionClosure(Context context, Closure closure, Deallocator deallocator) : RetainedSwiftPointer(context, deallocator), _closure(closure) {};'
                 if target_ctor in text:
                     text = text.replace(target_ctor, target_ctor + hfc_factory)
