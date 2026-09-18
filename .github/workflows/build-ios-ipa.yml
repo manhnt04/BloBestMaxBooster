@@ -6,27 +6,19 @@ on:
     branches:
       - main
 
+env:
+  DEVELOPER_DIR: /Applications/Xcode_16.2.app/Contents/Developer
+
 jobs:
   build-ipa:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Select Xcode 16.1+
+      - name: Select Xcode 16.2
         run: |
-          echo "Current Xcode version before switch:"
-          xcodebuild -version || true
-          
-          if [ -d "/Applications/Xcode_16.2.app" ]; then
-            sudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer
-          elif [ -d "/Applications/Xcode_16.1.app" ]; then
-            sudo xcode-select -s /Applications/Xcode_16.1.app/Contents/Developer
-          elif [ -d "/Applications/Xcode_16.app" ]; then
-            sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer
-          fi
-          
-          echo "Selected Xcode version:"
+          sudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer
           xcodebuild -version
 
       - name: Setup Node.js
@@ -46,24 +38,30 @@ jobs:
           cd ios
           pod install
 
+      - name: Pre-build ExpoModulesJSI slice
+        run: |
+          cd node_modules/expo-modules-jsi/apple
+          PODS_ROOT="$GITHUB_WORKSPACE/ios/Pods" \
+          RN_ROOT="$GITHUB_WORKSPACE/node_modules/react-native" \
+          PLATFORM_NAME=iphoneos \
+          ./scripts/build-xcframework.sh
+
       - name: Build iOS App (.app)
         run: |
           cd ios
           WORKSPACE=$(find . -name "*.xcworkspace" -maxdepth 1 | head -n 1)
           APP_NAME=$(basename "$WORKSPACE" .xcworkspace)
           echo "Targeting App Scheme: $APP_NAME in Workspace: $WORKSPACE"
-          xcodebuild -workspace "$WORKSPACE" -list
           
           xcodebuild build \
             -workspace "$WORKSPACE" \
             -scheme "$APP_NAME" \
             -configuration Release \
             -destination 'generic/platform=iOS' \
-            -derivedDataPath "../build" \
+            -derivedDataPath "$GITHUB_WORKSPACE/build" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            COMPILER_INDEX_STORE_ENABLE=NO
+            CODE_SIGN_IDENTITY=""
 
       - name: Package Payload into IPA
         run: |
