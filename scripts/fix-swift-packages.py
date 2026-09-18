@@ -515,4 +515,161 @@ def disable_expo_precompiled_modules():
 
 disable_expo_precompiled_modules()
 
+# 8. Patch ExpoModulesCore Swift files for Swift 6.0 / Xcode 16.4 compatibility
+def patch_expo_modules_core_sources():
+    core_dir = os.path.join('node_modules', 'expo-modules-core', 'ios')
+    if not os.path.exists(core_dir):
+        return
+
+    # 8a. Fix 'weak let' -> 'weak var' in expo-modules-core
+    weak_let_count = 0
+    for root, dirs, files in os.walk(core_dir):
+        for f in files:
+            if f.endswith('.swift'):
+                fp = os.path.join(root, f)
+                with open(fp, 'r', encoding='utf-8') as sf:
+                    c = sf.read()
+                if 'weak let ' in c:
+                    c = c.replace('weak let ', 'weak var ')
+                    with open(fp, 'w', encoding='utf-8', newline='\n') as sf:
+                        sf.write(c)
+                    weak_let_count += 1
+    print(f"Replaced 'weak let' with 'weak var' in {weak_let_count} files in ExpoModulesCore")
+
+    # 8b. Fix ViewDefinition.swift
+    vd_path = os.path.join(core_dir, 'Core', 'Views', 'ViewDefinition.swift')
+    if os.path.exists(vd_path):
+        with open(vd_path, 'r', encoding='utf-8') as f:
+            c = f.read()
+        c = c.replace("extension UIView: @MainActor AnyArgument {", "@MainActor extension UIView: AnyArgument {")
+        with open(vd_path, 'w', encoding='utf-8', newline='\n') as f:
+            f.write(c)
+        print("Patched ViewDefinition.swift")
+
+    # 8c. Fix SwiftUIHostingView.swift
+    hv_path = os.path.join(core_dir, 'Core', 'Views', 'SwiftUI', 'SwiftUIHostingView.swift')
+    if os.path.exists(hv_path):
+        with open(hv_path, 'r', encoding='utf-8') as f:
+            c = f.read()
+        c = c.replace(
+            "public final class HostingView<Props: ViewProps, ContentView: View<Props>>: ExpoView, @MainActor AnyExpoSwiftUIHostingView {",
+            "@MainActor public final class HostingView<Props: ViewProps, ContentView: View<Props>>: ExpoView, AnyExpoSwiftUIHostingView {"
+        )
+        with open(hv_path, 'w', encoding='utf-8', newline='\n') as f:
+            f.write(c)
+        print("Patched SwiftUIHostingView.swift")
+
+    # 8d. Fix SwiftUIVirtualView.swift
+    vv_path = os.path.join(core_dir, 'Core', 'Views', 'SwiftUI', 'SwiftUIVirtualView.swift')
+    if os.path.exists(vv_path):
+        with open(vv_path, 'r', encoding='utf-8') as f:
+            c = f.read()
+        c = c.replace(
+            "final class SwiftUIVirtualView<Props: ViewProps, ContentView: View<Props>>: SwiftUIVirtualViewObjC, @MainActor ExpoSwiftUIView {",
+            "@MainActor final class SwiftUIVirtualView<Props: ViewProps, ContentView: View<Props>>: SwiftUIVirtualViewObjC, ExpoSwiftUIView {"
+        )
+        c = c.replace(
+            "extension ExpoSwiftUI.SwiftUIVirtualView: @MainActor ExpoSwiftUI.ViewWrapper {",
+            "@MainActor extension ExpoSwiftUI.SwiftUIVirtualView: ExpoSwiftUI.ViewWrapper {"
+        )
+        c = c.replace(
+            "final class SwiftUIVirtualViewDev<Props: ViewProps, ContentView: View<Props>>: SwiftUIVirtualViewObjCDev, @MainActor ExpoSwiftUIView {",
+            "@MainActor final class SwiftUIVirtualViewDev<Props: ViewProps, ContentView: View<Props>>: SwiftUIVirtualViewObjCDev, ExpoSwiftUIView {"
+        )
+        c = c.replace(
+            "extension ExpoSwiftUI.SwiftUIVirtualViewDev: @MainActor ExpoSwiftUI.ViewWrapper {",
+            "@MainActor extension ExpoSwiftUI.SwiftUIVirtualViewDev: ExpoSwiftUI.ViewWrapper {"
+        )
+        with open(vv_path, 'w', encoding='utf-8', newline='\n') as f:
+            f.write(c)
+        print("Patched SwiftUIVirtualView.swift")
+
+    # 8e. Fix DynamicSwiftUIViewType.swift
+    ds_path = os.path.join(core_dir, 'Core', 'DynamicTypes', 'DynamicSwiftUIViewType.swift')
+    if os.path.exists(ds_path):
+        with open(ds_path, 'r', encoding='utf-8') as f:
+            c = f.read()
+        c = c.replace("return try performSynchronouslyOnMainThread {", "return try performSynchronouslyOnMainActor {")
+        with open(ds_path, 'w', encoding='utf-8', newline='\n') as f:
+            f.write(c)
+        print("Patched DynamicSwiftUIViewType.swift")
+
+    # 8f. Fix ExpoReactDelegate.swift
+    rd_path = os.path.join(core_dir, 'ReactDelegates', 'ExpoReactDelegate.swift')
+    if os.path.exists(rd_path):
+        with open(rd_path, 'r', encoding='utf-8') as f:
+            c = f.read()
+        old_decl = "@objc\n  public func createRootViewController() -> UIViewController {"
+        new_decl = "@MainActor\n  @objc\n  public func createRootViewController() -> UIViewController {"
+        if old_decl in c:
+            c = c.replace(old_decl, new_decl)
+        else:
+            c = re.sub(r'@objc\s+public func createRootViewController\(\)', '@MainActor\n  @objc\n  public func createRootViewController()', c)
+        with open(rd_path, 'w', encoding='utf-8', newline='\n') as f:
+            f.write(c)
+        print("Patched ExpoReactDelegate.swift")
+
+    # 8g. Fix PersistentFileLog.swift
+    pfl_path = os.path.join(core_dir, 'Core', 'Logging', 'PersistentFileLog.swift')
+    if os.path.exists(pfl_path):
+        with open(pfl_path, 'r', encoding='utf-8') as f:
+            c = f.read()
+        c = c.replace("public typealias PersistentFileLogFilter = (String) -> Bool", "public typealias PersistentFileLogFilter = @Sendable (String) -> Bool")
+        c = c.replace("public typealias PersistentFileLogCompletionHandler = (Error?) -> Void", "public typealias PersistentFileLogCompletionHandler = @Sendable (Error?) -> Void")
+        with open(pfl_path, 'w', encoding='utf-8', newline='\n') as f:
+            f.write(c)
+        print("Patched PersistentFileLog.swift")
+
+    # 8h. Fix SceneGeometry.swift
+    sg_path = os.path.join(core_dir, 'Utilities', 'SceneGeometry.swift')
+    if os.path.exists(sg_path):
+        with open(sg_path, 'r', encoding='utf-8') as f:
+            c = f.read()
+        c = c.replace("public enum SceneGeometry {", "@MainActor\npublic enum SceneGeometry {")
+        c = c.replace("public extension SceneGeometry {", "@MainActor\npublic extension SceneGeometry {")
+        with open(sg_path, 'w', encoding='utf-8', newline='\n') as f:
+            f.write(c)
+        print("Patched SceneGeometry.swift")
+
+    # 8i. Fix SwiftUIViewFrameObserver.swift
+    fo_path = os.path.join(core_dir, 'Core', 'Views', 'SwiftUI', 'SwiftUIViewFrameObserver.swift')
+    if os.path.exists(fo_path):
+        with open(fo_path, 'r', encoding='utf-8') as f:
+            c = f.read()
+        c = c.replace(
+            "callback(CGRect(origin: view.frame.origin, size: newValue.size))",
+            "MainActor.assumeIsolated { callback(CGRect(origin: view.frame.origin, size: newValue.size)) }"
+        )
+        with open(fo_path, 'w', encoding='utf-8', newline='\n') as f:
+            f.write(c)
+        print("Patched SwiftUIViewFrameObserver.swift")
+
+    # 8j. Fix URLAuthenticationChallengeForwardSender.swift
+    uac_path = os.path.join(core_dir, 'DevTools', 'URLAuthenticationChallengeForwardSender.swift')
+    if os.path.exists(uac_path):
+        with open(uac_path, 'r', encoding='utf-8') as f:
+            c = f.read()
+        c = c.replace(
+            "internal final class URLAuthenticationChallengeForwardSender: NSObject, URLAuthenticationChallengeSender {",
+            "internal final class URLAuthenticationChallengeForwardSender: NSObject, @unchecked Sendable, URLAuthenticationChallengeSender {"
+        )
+        with open(uac_path, 'w', encoding='utf-8', newline='\n') as f:
+            f.write(c)
+        print("Patched URLAuthenticationChallengeForwardSender.swift")
+
+    # 8k. Fix URLSessionSessionDelegateProxy.swift
+    uss_path = os.path.join(core_dir, 'DevTools', 'URLSessionSessionDelegateProxy.swift')
+    if os.path.exists(uss_path):
+        with open(uss_path, 'r', encoding='utf-8') as f:
+            c = f.read()
+        c = c.replace(
+            "public final class URLSessionSessionDelegateProxy: NSObject, URLSessionDataDelegate {",
+            "public final class URLSessionSessionDelegateProxy: NSObject, @unchecked Sendable, URLSessionDataDelegate {"
+        )
+        with open(uss_path, 'w', encoding='utf-8', newline='\n') as f:
+            f.write(c)
+        print("Patched URLSessionSessionDelegateProxy.swift")
+
+patch_expo_modules_core_sources()
+
 print("All Package.swift files, native headers, Swift sources, and CocoaPods specs verified and patched for Swift 6.0!")
