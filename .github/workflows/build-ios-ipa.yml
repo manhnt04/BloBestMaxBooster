@@ -30,13 +30,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Apply clean ExpoModulesJSI patch for Swift 6.0 compatibility
-        run: |
-          cp scripts/patches/ExpoModulesJSI-Package.swift node_modules/expo-modules-jsi/apple/Package.swift
-          head -n 5 node_modules/expo-modules-jsi/apple/Package.swift
+      - name: Patch all Package.swift for Swift 6.0 compatibility
+        run: python3 scripts/fix-swift-packages.py
 
       - name: Run Expo Prebuild for iOS
         run: npx expo prebuild --platform ios --no-install
+
+      - name: Post-Prebuild Patch any generated Package.swift
+        run: python3 scripts/fix-swift-packages.py
 
       - name: Install CocoaPods
         run: |
