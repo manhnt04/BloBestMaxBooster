@@ -1,4 +1,4 @@
-﻿name: Build iOS IPA
+name: Build iOS IPA
 
 on:
   workflow_dispatch:
@@ -7,16 +7,16 @@ on:
       - main
 
 env:
-  DEVELOPER_DIR: /Applications/Xcode_16.2.app/Contents/Developer
+  DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
 
 jobs:
   build-ipa:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Select Xcode 16.2
+      - name: Select Xcode 16.4
         shell: bash
         run: |
           set -euo pipefail
