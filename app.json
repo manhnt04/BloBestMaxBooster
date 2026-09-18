@@ -7,7 +7,20 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.cyber.gamebooster",
+      "infoPlist": {
+        "LSApplicationQueriesSchemes": [
+          "lienquanmobile",
+          "pubgmobile",
+          "freefire",
+          "genshinimpact",
+          "wildrift",
+          "speeddrifters",
+          "identityv",
+          "itms-apps"
+        ]
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -31,6 +44,12 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "6e5ce527-54d3-4df3-ae57-cdf1ff6dab4c"
+      }
+    },
+    "owner": "tunamanh"
   }
 }
