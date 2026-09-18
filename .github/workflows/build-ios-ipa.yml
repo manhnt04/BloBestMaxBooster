@@ -46,29 +46,29 @@ jobs:
           cd ios
           pod install
 
-      - name: Build Xcode Archive (Unsigned)
+      - name: Build iOS App (.app)
         run: |
           cd ios
           WORKSPACE=$(find . -name "*.xcworkspace" -maxdepth 1 | head -n 1)
-          SCHEME=$(xcodebuild -workspace "$WORKSPACE" -list -json | python3 -c 'import sys, json; print(json.load(sys.stdin)["workspace"]["schemes"][0])')
-          echo "Building Scheme: $SCHEME with Workspace: $WORKSPACE"
+          APP_NAME=$(basename "$WORKSPACE" .xcworkspace)
+          echo "Targeting App Scheme: $APP_NAME in Workspace: $WORKSPACE"
+          xcodebuild -workspace "$WORKSPACE" -list
           
-          xcodebuild archive \
+          xcodebuild build \
             -workspace "$WORKSPACE" \
-            -scheme "$SCHEME" \
+            -scheme "$APP_NAME" \
             -configuration Release \
             -destination 'generic/platform=iOS' \
-            -archivePath "../build/App.xcarchive" \
+            -derivedDataPath "../build" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            PROVISIONING_PROFILE="" \
-            AD_HOC_CODE_SIGNING_ALLOWED=YES
+            COMPILER_INDEX_STORE_ENABLE=NO
 
       - name: Package Payload into IPA
         run: |
           mkdir -p Payload
-          APP_PATH=$(find build/App.xcarchive/Products/Applications -name "*.app" -maxdepth 1 | head -n 1)
+          APP_PATH=$(find build/Build/Products/Release-iphoneos -name "*.app" -maxdepth 1 | head -n 1)
           echo "Found compiled app at: $APP_PATH"
           cp -r "$APP_PATH" Payload/
           zip -r -y GameBoosterUltra.ipa Payload
