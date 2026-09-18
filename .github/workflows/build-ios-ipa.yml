@@ -13,6 +13,22 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Select Xcode 16.1+
+        run: |
+          echo "Current Xcode version before switch:"
+          xcodebuild -version || true
+          
+          if [ -d "/Applications/Xcode_16.2.app" ]; then
+            sudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer
+          elif [ -d "/Applications/Xcode_16.1.app" ]; then
+            sudo xcode-select -s /Applications/Xcode_16.1.app/Contents/Developer
+          elif [ -d "/Applications/Xcode_16.app" ]; then
+            sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer
+          fi
+          
+          echo "Selected Xcode version:"
+          xcodebuild -version
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -23,7 +39,7 @@ jobs:
         run: npm ci
 
       - name: Run Expo Prebuild for iOS
-        run: npx expo prebuild --platform ios
+        run: npx expo prebuild --platform ios --no-install
 
       - name: Install CocoaPods
         run: |
