@@ -1,0 +1,55 @@
+import { GamingTool } from '../types';
+
+export const GAMING_TOOLS: GamingTool[] = [
+  {
+    id: 'crosshair',
+    title: 'Tâm Ngắm Ảo (Crosshair)',
+    subtitle: 'Vẽ tâm ngắm nổi đè lên game FPS thật',
+    icon: 'crosshairs',
+    enabled: false,
+    color: '#FF1744',
+    badge: 'FPS PRO',
+  },
+  {
+    id: 'ping_dns',
+    title: 'Ổn Định Ping & Chống Lag',
+    subtitle: 'Định tuyến DNS Gaming 1.1.1.1 hạ trễ',
+    icon: 'wifi',
+    enabled: true,
+    color: '#00E676',
+    badge: '1.1.1.1',
+  },
+  {
+    id: 'dnd',
+    title: 'Không Làm Phiền (DND)',
+    subtitle: 'Tự động chặn cuộc gọi & thông báo khi combat',
+    icon: 'bell-slash',
+    enabled: false,
+    color: '#9B51E0',
+  },
+  {
+    id: 'cooler',
+    title: 'Làm Mát Tức Thì (Cooler)',
+    subtitle: 'Hạ tải nhiệt CPU, chống chai phồng pin',
+    icon: 'snowflake-o',
+    enabled: false,
+    color: '#00F2FE',
+  },
+  {
+    id: 'floating_fps',
+    title: 'Đồng Hồ FPS Nổi',
+    subtitle: 'Hiển thị tốc độ khung hình đè lên màn hình',
+    icon: 'tachometer',
+    enabled: false,
+    color: '#FFC107',
+  },
+  {
+    id: 'gfx_tool',
+    title: 'Tối Ưu Đồ Họa (GFX Tool)',
+    subtitle: 'Mở khóa 90/120 FPS, khử bóng mờ màn hình',
+    icon: 'sliders',
+    enabled: true,
+    color: '#FF5722',
+    badge: '120 FPS',
+  },
+];

@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "GameBooster",
-    "slug": "GameBooster",
+    "name": "GameBooster Ultra",
+    "slug": "gamebooster-ultra",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -16,7 +16,18 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.cyber.gamebooster",
+      "permissions": [
+        "KILL_BACKGROUND_PROCESSES",
+        "SYSTEM_ALERT_WINDOW",
+        "ACCESS_NOTIFICATION_POLICY",
+        "PACKAGE_USAGE_STATS",
+        "INTERNET",
+        "ACCESS_NETWORK_STATE",
+        "FOREGROUND_SERVICE",
+        "VIBRATE"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
