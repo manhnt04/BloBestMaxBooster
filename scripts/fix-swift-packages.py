@@ -1,4 +1,4 @@
-import os, sys, shutil
+import os, sys, shutil, re
 
 def fix_package_swift(file_path):
     if not os.path.exists(file_path):
@@ -81,7 +81,7 @@ def patch_expo_modules_jsi_sources():
     if not os.path.exists(base_dir):
         return
     
-    # 6a. Fix 'weak let' -> 'weak var' across all Swift files
+    # 6a. Fix 'weak let' / 'weak var' -> 'nonisolated(unsafe) weak var' across all Swift files
     weak_let_count = 0
     for root, dirs, files in os.walk(base_dir):
         for f in files:
@@ -89,12 +89,27 @@ def patch_expo_modules_jsi_sources():
                 fp = os.path.join(root, f)
                 with open(fp, 'r', encoding='utf-8') as sf:
                     content = sf.read()
+                modified = False
+                if 'private weak let runtime:' in content:
+                    content = content.replace('private weak let runtime:', 'nonisolated(unsafe) private weak var runtime:')
+                    modified = True
+                if 'internal weak let runtime:' in content:
+                    content = content.replace('internal weak let runtime:', 'nonisolated(unsafe) internal weak var runtime:')
+                    modified = True
+                if 'private weak var runtime:' in content and 'nonisolated(unsafe) private weak var runtime:' not in content:
+                    content = content.replace('private weak var runtime:', 'nonisolated(unsafe) private weak var runtime:')
+                    modified = True
+                if 'internal weak var runtime:' in content and 'nonisolated(unsafe) internal weak var runtime:' not in content:
+                    content = content.replace('internal weak var runtime:', 'nonisolated(unsafe) internal weak var runtime:')
+                    modified = True
                 if 'weak let ' in content:
-                    new_content = content.replace('weak let ', 'weak var ')
+                    content = content.replace('weak let ', 'weak var ')
+                    modified = True
+                if modified:
                     with open(fp, 'w', encoding='utf-8', newline='\n') as sf:
-                        sf.write(new_content)
+                        sf.write(content)
                     weak_let_count += 1
-    print(f"Replaced 'weak let' with 'weak var' in {weak_let_count} files")
+    print(f"Patched weak properties with nonisolated(unsafe) in {weak_let_count} files")
 
     # 6b. Fix trailing comma in JavaScriptRuntime.swift
     rt_path = os.path.join(base_dir, 'Runtime', 'JavaScriptRuntime.swift')
@@ -148,8 +163,12 @@ def patch_expo_modules_jsi_sources():
     if os.path.exists(actor_path):
         with open(actor_path, 'r', encoding='utf-8') as f:
             content = f.read()
-        old_assume = """  public static func assumeIsolated<T: ~Copyable>(_ operation: @JavaScriptActor () -> T) -> T {
-    typealias IsolatedRunner = @JavaScriptActor (@JavaScriptActor () -> T) -> T
+        
+        old_assume_pattern1 = """    typealias NonisolatedOp = () -> T
+    let nonisolatedOp = unsafeBitCast(operation, to: NonisolatedOp.self)
+    return nonisolatedOp()"""
+
+        old_assume_pattern2 = """    typealias IsolatedRunner = @JavaScriptActor (@JavaScriptActor () -> T) -> T
     typealias NonisolatedRunner = (@JavaScriptActor () -> T) -> T
 
     // This will crash if the current context cannot be isolated.
@@ -158,36 +177,61 @@ def patch_expo_modules_jsi_sources():
     // Cast the capture-free runner rather than `operation` itself. `operation` remains nonescaping,
     // so its captures can stay in the caller's stack frame.
     let runner = unsafeBitCast(runIsolated as IsolatedRunner, to: NonisolatedRunner.self)
-    return runner(operation)
-  }"""
-        new_assume = """  public static func assumeIsolated<T: ~Copyable>(_ operation: @JavaScriptActor () -> T) -> T {
-    // This will crash if the current context cannot be isolated.
-    checkIsolated()
+    return runner(operation)"""
 
+        new_assume_body = """    return withoutActuallyEscaping(operation) { fn in
+      typealias NonisolatedOp = () -> T
+      let rawFn = unsafeBitCast(fn, to: NonisolatedOp.self)
+      return rawFn()
+    }"""
+
+        # Reset any duplicated checkIsolated
+        content = content.replace("    // This will crash if the current context cannot be isolated.\n    checkIsolated()\n\n    // This will crash if the current context cannot be isolated.\n    checkIsolated()", "    // This will crash if the current context cannot be isolated.\n    checkIsolated()")
+        content = content.replace("    // This will crash if the current context cannot be isolated.\n    checkIsolated()\n\n    return withoutActuallyEscaping(operation) {\n    return withoutActuallyEscaping(operation) {", "    // This will crash if the current context cannot be isolated.\n    checkIsolated()\n\n    return withoutActuallyEscaping(operation) {")
+
+        if old_assume_pattern1 in content:
+            content = content.replace(old_assume_pattern1, new_assume_body)
+        elif old_assume_pattern2 in content:
+            content = content.replace(old_assume_pattern2, new_assume_body)
+
+        old_run_pattern = """  @usableFromInline
+  internal static func runIsolated<T: ~Copyable>(_ operation: @JavaScriptActor () -> T) -> T {
     typealias NonisolatedOp = () -> T
     let nonisolatedOp = unsafeBitCast(operation, to: NonisolatedOp.self)
     return nonisolatedOp()
   }"""
-        if old_assume in content:
-            content = content.replace(old_assume, new_assume)
 
-        old_run_isolated = """  @JavaScriptActor
+        old_run_orig = """  @JavaScriptActor
   @usableFromInline
   internal static func runIsolated<T: ~Copyable>(_ operation: @JavaScriptActor () -> T) -> T {
     return operation()
   }"""
-        new_run_isolated = """  @usableFromInline
+
+        new_run_body = """  @usableFromInline
   internal static func runIsolated<T: ~Copyable>(_ operation: @JavaScriptActor () -> T) -> T {
-    typealias NonisolatedOp = () -> T
-    let nonisolatedOp = unsafeBitCast(operation, to: NonisolatedOp.self)
-    return nonisolatedOp()
+    return withoutActuallyEscaping(operation) { fn in
+      typealias NonisolatedOp = () -> T
+      let rawFn = unsafeBitCast(fn, to: NonisolatedOp.self)
+      return rawFn()
+    }
   }"""
-        if old_run_isolated in content:
-            content = content.replace(old_run_isolated, new_run_isolated)
+
+        # Also clean up if runIsolated had duplicated checkIsolated
+        content = re.sub(r'@usableFromInline\s+internal static func runIsolated[\s\S]*?return rawFn\(\)\s*\}\s*\}', new_run_body, content)
+
+        if old_run_pattern in content:
+            content = content.replace(old_run_pattern, new_run_body)
+        elif old_run_orig in content:
+            content = content.replace(old_run_orig, new_run_body)
+
+        if old_run_pattern in content:
+            content = content.replace(old_run_pattern, new_run_body)
+        elif old_run_orig in content:
+            content = content.replace(old_run_orig, new_run_body)
 
         with open(actor_path, 'w', encoding='utf-8', newline='\n') as f:
             f.write(content)
-        print("Fixed JavaScriptActor.swift isolation calls")
+        print("Fixed JavaScriptActor.swift isolation calls with withoutActuallyEscaping")
 
 patch_expo_modules_jsi_sources()
 
