@@ -75,5 +75,121 @@ def patch_runtime_scheduler():
 
 patch_runtime_scheduler()
 
-print("All Package.swift files and headers verified and patched for Swift 6.0!")
+# 6. Patch ExpoModulesJSI Swift sources for Swift 6.0 compatibility
+def patch_expo_modules_jsi_sources():
+    base_dir = os.path.join('node_modules', 'expo-modules-jsi', 'apple', 'Sources', 'ExpoModulesJSI')
+    if not os.path.exists(base_dir):
+        return
+    
+    # 6a. Fix 'weak let' -> 'weak var' across all Swift files
+    weak_let_count = 0
+    for root, dirs, files in os.walk(base_dir):
+        for f in files:
+            if f.endswith('.swift'):
+                fp = os.path.join(root, f)
+                with open(fp, 'r', encoding='utf-8') as sf:
+                    content = sf.read()
+                if 'weak let ' in content:
+                    new_content = content.replace('weak let ', 'weak var ')
+                    with open(fp, 'w', encoding='utf-8', newline='\n') as sf:
+                        sf.write(new_content)
+                    weak_let_count += 1
+    print(f"Replaced 'weak let' with 'weak var' in {weak_let_count} files")
+
+    # 6b. Fix trailing comma in JavaScriptRuntime.swift
+    rt_path = os.path.join(base_dir, 'Runtime', 'JavaScriptRuntime.swift')
+    if os.path.exists(rt_path):
+        with open(rt_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        old_target = "_ arguments: consuming JavaScriptValuesBuffer,\n    ) async throws -> JavaScriptValue"
+        new_target = "_ arguments: consuming JavaScriptValuesBuffer\n    ) async throws -> JavaScriptValue"
+        if old_target in content:
+            content = content.replace(old_target, new_target)
+            with open(rt_path, 'w', encoding='utf-8', newline='\n') as f:
+                f.write(content)
+            print("Fixed trailing comma in JavaScriptRuntime.swift")
+
+    # 6c. Fix Escapable in JavaScriptRef.swift and JavaScriptValue.swift
+    ref_path = os.path.join(base_dir, 'Runtime', 'JavaScriptRef.swift')
+    if os.path.exists(ref_path):
+        with open(ref_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        if "Copyable, Escapable {" in content:
+            content = content.replace("Copyable, Escapable {", "Copyable {")
+            with open(ref_path, 'w', encoding='utf-8', newline='\n') as f:
+                f.write(content)
+            print("Fixed Escapable in JavaScriptRef.swift")
+
+    val_path = os.path.join(base_dir, 'Runtime', 'Values', 'JavaScriptValue.swift')
+    if os.path.exists(val_path):
+        with open(val_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        if "Equatable, Escapable {" in content:
+            content = content.replace("Equatable, Escapable {", "Equatable {")
+            with open(val_path, 'w', encoding='utf-8', newline='\n') as f:
+                f.write(content)
+            print("Fixed Escapable in JavaScriptValue.swift")
+
+    # 6d. Fix CppError extension in JavaScriptError.swift
+    err_path = os.path.join(base_dir, 'Runtime', 'Values', 'JavaScriptError.swift')
+    if os.path.exists(err_path):
+        with open(err_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        old_cpp_err = "extension expo.CppError: Error {\n  public var message: String {\n    return String(_getMessage())\n  }\n}"
+        new_cpp_err = "extension expo.CppError: Error {\n  var message: String {\n    return String(_getMessage())\n  }\n}"
+        if old_cpp_err in content:
+            content = content.replace(old_cpp_err, new_cpp_err)
+            with open(err_path, 'w', encoding='utf-8', newline='\n') as f:
+                f.write(content)
+            print("Fixed CppError extension in JavaScriptError.swift")
+
+    # 6e. Fix JavaScriptActor.swift isolation calls
+    actor_path = os.path.join(base_dir, 'Runtime', 'JavaScriptActor.swift')
+    if os.path.exists(actor_path):
+        with open(actor_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        old_assume = """  public static func assumeIsolated<T: ~Copyable>(_ operation: @JavaScriptActor () -> T) -> T {
+    typealias IsolatedRunner = @JavaScriptActor (@JavaScriptActor () -> T) -> T
+    typealias NonisolatedRunner = (@JavaScriptActor () -> T) -> T
+
+    // This will crash if the current context cannot be isolated.
+    checkIsolated()
+
+    // Cast the capture-free runner rather than `operation` itself. `operation` remains nonescaping,
+    // so its captures can stay in the caller's stack frame.
+    let runner = unsafeBitCast(runIsolated as IsolatedRunner, to: NonisolatedRunner.self)
+    return runner(operation)
+  }"""
+        new_assume = """  public static func assumeIsolated<T: ~Copyable>(_ operation: @JavaScriptActor () -> T) -> T {
+    // This will crash if the current context cannot be isolated.
+    checkIsolated()
+
+    typealias NonisolatedOp = () -> T
+    let nonisolatedOp = unsafeBitCast(operation, to: NonisolatedOp.self)
+    return nonisolatedOp()
+  }"""
+        if old_assume in content:
+            content = content.replace(old_assume, new_assume)
+
+        old_run_isolated = """  @JavaScriptActor
+  @usableFromInline
+  internal static func runIsolated<T: ~Copyable>(_ operation: @JavaScriptActor () -> T) -> T {
+    return operation()
+  }"""
+        new_run_isolated = """  @usableFromInline
+  internal static func runIsolated<T: ~Copyable>(_ operation: @JavaScriptActor () -> T) -> T {
+    typealias NonisolatedOp = () -> T
+    let nonisolatedOp = unsafeBitCast(operation, to: NonisolatedOp.self)
+    return nonisolatedOp()
+  }"""
+        if old_run_isolated in content:
+            content = content.replace(old_run_isolated, new_run_isolated)
+
+        with open(actor_path, 'w', encoding='utf-8', newline='\n') as f:
+            f.write(content)
+        print("Fixed JavaScriptActor.swift isolation calls")
+
+patch_expo_modules_jsi_sources()
+
+print("All Package.swift files, native headers, and Swift sources verified and patched for Swift 6.0!")
 

@@ -76,6 +76,7 @@ let package = Package(
           "-enable-library-evolution",
           "-emit-module-interface",
           "-no-verify-emitted-module-interface",
+          "-enable-experimental-feature", "NonescapableTypes",
           "-Xfrontend",
           "-clang-header-expose-decls=has-expose-attr",
 
