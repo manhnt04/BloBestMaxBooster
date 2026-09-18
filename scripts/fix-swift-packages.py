@@ -541,20 +541,24 @@ def patch_expo_modules_core_sources():
     if os.path.exists(vd_path):
         with open(vd_path, 'r', encoding='utf-8') as f:
             c = f.read()
-        c = c.replace("extension UIView: @MainActor AnyArgument {", "@MainActor extension UIView: AnyArgument {")
-        with open(vd_path, 'w', encoding='utf-8', newline='\n') as f:
-            f.write(c)
-        print("Patched ViewDefinition.swift")
+        if "@MainActor extension UIView" not in c:
+            c = c.replace("extension UIView: @MainActor AnyArgument {", "@MainActor extension UIView: AnyArgument {")
+            with open(vd_path, 'w', encoding='utf-8', newline='\n') as f:
+                f.write(c)
+            print("Patched ViewDefinition.swift")
 
-    # 8c. Fix SwiftUIHostingView.swift
+    # 8c. Fix SwiftUIHostingView.swift (HostingView and AnyExpoSwiftUIHostingView)
     hv_path = os.path.join(core_dir, 'Core', 'Views', 'SwiftUI', 'SwiftUIHostingView.swift')
     if os.path.exists(hv_path):
         with open(hv_path, 'r', encoding='utf-8') as f:
             c = f.read()
-        c = c.replace(
-            "public final class HostingView<Props: ViewProps, ContentView: View<Props>>: ExpoView, @MainActor AnyExpoSwiftUIHostingView {",
-            "@MainActor public final class HostingView<Props: ViewProps, ContentView: View<Props>>: ExpoView, AnyExpoSwiftUIHostingView {"
-        )
+        if "@MainActor public final class HostingView" not in c:
+            c = c.replace(
+                "public final class HostingView<Props: ViewProps, ContentView: View<Props>>: ExpoView, @MainActor AnyExpoSwiftUIHostingView {",
+                "@MainActor public final class HostingView<Props: ViewProps, ContentView: View<Props>>: ExpoView, AnyExpoSwiftUIHostingView {"
+            )
+        if "@MainActor\ninternal protocol AnyExpoSwiftUIHostingView" not in c and "@MainActor internal protocol AnyExpoSwiftUIHostingView" not in c:
+            c = c.replace("internal protocol AnyExpoSwiftUIHostingView {", "@MainActor internal protocol AnyExpoSwiftUIHostingView {")
         with open(hv_path, 'w', encoding='utf-8', newline='\n') as f:
             f.write(c)
         print("Patched SwiftUIHostingView.swift")
@@ -564,52 +568,124 @@ def patch_expo_modules_core_sources():
     if os.path.exists(vv_path):
         with open(vv_path, 'r', encoding='utf-8') as f:
             c = f.read()
-        c = c.replace(
-            "final class SwiftUIVirtualView<Props: ViewProps, ContentView: View<Props>>: SwiftUIVirtualViewObjC, @MainActor ExpoSwiftUIView {",
-            "@MainActor final class SwiftUIVirtualView<Props: ViewProps, ContentView: View<Props>>: SwiftUIVirtualViewObjC, ExpoSwiftUIView {"
-        )
-        c = c.replace(
-            "extension ExpoSwiftUI.SwiftUIVirtualView: @MainActor ExpoSwiftUI.ViewWrapper {",
-            "@MainActor extension ExpoSwiftUI.SwiftUIVirtualView: ExpoSwiftUI.ViewWrapper {"
-        )
-        c = c.replace(
-            "final class SwiftUIVirtualViewDev<Props: ViewProps, ContentView: View<Props>>: SwiftUIVirtualViewObjCDev, @MainActor ExpoSwiftUIView {",
-            "@MainActor final class SwiftUIVirtualViewDev<Props: ViewProps, ContentView: View<Props>>: SwiftUIVirtualViewObjCDev, ExpoSwiftUIView {"
-        )
-        c = c.replace(
-            "extension ExpoSwiftUI.SwiftUIVirtualViewDev: @MainActor ExpoSwiftUI.ViewWrapper {",
-            "@MainActor extension ExpoSwiftUI.SwiftUIVirtualViewDev: ExpoSwiftUI.ViewWrapper {"
-        )
+        if "@MainActor final class SwiftUIVirtualView<" not in c:
+            c = c.replace(
+                "final class SwiftUIVirtualView<Props: ViewProps, ContentView: View<Props>>: SwiftUIVirtualViewObjC, @MainActor ExpoSwiftUIView {",
+                "@MainActor final class SwiftUIVirtualView<Props: ViewProps, ContentView: View<Props>>: SwiftUIVirtualViewObjC, ExpoSwiftUIView {"
+            )
+        if "@MainActor extension ExpoSwiftUI.SwiftUIVirtualView:" not in c:
+            c = c.replace(
+                "extension ExpoSwiftUI.SwiftUIVirtualView: @MainActor ExpoSwiftUI.ViewWrapper {",
+                "@MainActor extension ExpoSwiftUI.SwiftUIVirtualView: ExpoSwiftUI.ViewWrapper {"
+            )
+        if "@MainActor final class SwiftUIVirtualViewDev<" not in c:
+            c = c.replace(
+                "final class SwiftUIVirtualViewDev<Props: ViewProps, ContentView: View<Props>>: SwiftUIVirtualViewObjCDev, @MainActor ExpoSwiftUIView {",
+                "@MainActor final class SwiftUIVirtualViewDev<Props: ViewProps, ContentView: View<Props>>: SwiftUIVirtualViewObjCDev, ExpoSwiftUIView {"
+            )
+        if "@MainActor extension ExpoSwiftUI.SwiftUIVirtualViewDev:" not in c:
+            c = c.replace(
+                "extension ExpoSwiftUI.SwiftUIVirtualViewDev: @MainActor ExpoSwiftUI.ViewWrapper {",
+                "@MainActor extension ExpoSwiftUI.SwiftUIVirtualViewDev: ExpoSwiftUI.ViewWrapper {"
+            )
         with open(vv_path, 'w', encoding='utf-8', newline='\n') as f:
             f.write(c)
         print("Patched SwiftUIVirtualView.swift")
 
-    # 8e. Fix DynamicSwiftUIViewType.swift
+    # 8e. Fix ExpoSwiftUI.swift (ViewWrapper protocol)
+    es_path = os.path.join(core_dir, 'Core', 'Views', 'SwiftUI', 'ExpoSwiftUI.swift')
+    if os.path.exists(es_path):
+        with open(es_path, 'r', encoding='utf-8') as f:
+            c = f.read()
+        if "@MainActor\n  public protocol ViewWrapper" not in c and "@MainActor public protocol ViewWrapper" not in c:
+            c = c.replace("  public protocol ViewWrapper {", "  @MainActor\n  public protocol ViewWrapper {")
+            with open(es_path, 'w', encoding='utf-8', newline='\n') as f:
+                f.write(c)
+            print("Patched ExpoSwiftUI.swift")
+
+    # 8f. Fix DynamicSwiftUIViewType.swift
     ds_path = os.path.join(core_dir, 'Core', 'DynamicTypes', 'DynamicSwiftUIViewType.swift')
     if os.path.exists(ds_path):
         with open(ds_path, 'r', encoding='utf-8') as f:
             c = f.read()
-        c = c.replace("return try performSynchronouslyOnMainThread {", "return try performSynchronouslyOnMainActor {")
-        with open(ds_path, 'w', encoding='utf-8', newline='\n') as f:
-            f.write(c)
-        print("Patched DynamicSwiftUIViewType.swift")
+        target_old = """    return try performSynchronouslyOnMainThread {
+      if let view = appContext.findView(withTag: viewTag, ofType: ExpoSwiftUI.SwiftUIVirtualView<ViewType.Props, ViewType>.self) {
+        return view.contentView
+      }
+      if let view = appContext.findView(withTag: viewTag, ofType: ExpoSwiftUI.SwiftUIVirtualViewDev<ViewType.Props, ViewType>.self) {
+        return view.contentView
+      }
+      // For wrapper types
+      // e.g. ExpoUIView(SecureFieldView.self)
+      if let provider = appContext.findView(withTag: viewTag, ofType: ExpoSwiftUI.ViewWrapper.self),
+         let innerView = provider.getWrappedView() as? ViewType {
+        return innerView
+      }
+      // For views using WithHostingView protocol.
+      // e.g. View(HostView.self) where HostView conforms to WithHostingView
+      guard let view = appContext.findView(withTag: viewTag, ofType: AnyExpoSwiftUIHostingView.self) else {
+        throw ViewNotFoundException((tag: viewTag, type: ViewType.self))
+      }
+      guard let contentView = view.getContentView() as? ViewType else {
+        throw UnexpectedViewTypeException((tag: viewTag, expectedType: ViewType.self, actualType: type(of: view.getContentView())))
+      }
+      return contentView
+    }"""
+        target_new = """    return try performSynchronouslyOnMainThread {
+      return try MainActor.assumeIsolated {
+        if let view = appContext.findView(withTag: viewTag, ofType: ExpoSwiftUI.SwiftUIVirtualView<ViewType.Props, ViewType>.self) {
+          return view.contentView
+        }
+        if let view = appContext.findView(withTag: viewTag, ofType: ExpoSwiftUI.SwiftUIVirtualViewDev<ViewType.Props, ViewType>.self) {
+          return view.contentView
+        }
+        // For wrapper types
+        // e.g. ExpoUIView(SecureFieldView.self)
+        if let provider = appContext.findView(withTag: viewTag, ofType: ExpoSwiftUI.ViewWrapper.self),
+           let innerView = provider.getWrappedView() as? ViewType {
+          return innerView
+        }
+        // For views using WithHostingView protocol.
+        // e.g. View(HostView.self) where HostView conforms to WithHostingView
+        guard let view = appContext.findView(withTag: viewTag, ofType: AnyExpoSwiftUIHostingView.self) else {
+          throw ViewNotFoundException((tag: viewTag, type: ViewType.self))
+        }
+        guard let contentView = view.getContentView() as? ViewType else {
+          throw UnexpectedViewTypeException((tag: viewTag, expectedType: ViewType.self, actualType: type(of: view.getContentView())))
+        }
+        return contentView
+      }
+    }"""
+        if target_old in c:
+            c = c.replace(target_old, target_new)
+            with open(ds_path, 'w', encoding='utf-8', newline='\n') as f:
+                f.write(c)
+            print("Patched DynamicSwiftUIViewType.swift with MainActor.assumeIsolated")
+        elif "performSynchronouslyOnMainActor" in c:
+            c = c.replace("return try performSynchronouslyOnMainActor {", "return try performSynchronouslyOnMainThread {\n      return try MainActor.assumeIsolated {")
+            # Close the extra brace before closing performSynchronouslyOnMainThread
+            idx = c.rfind("    }")
+            if idx != -1:
+                c = c[:idx] + "    }\n    }" + c[idx+5:]
+            with open(ds_path, 'w', encoding='utf-8', newline='\n') as f:
+                f.write(c)
+            print("Fixed DynamicSwiftUIViewType.swift assumeIsolated")
 
-    # 8f. Fix ExpoReactDelegate.swift
+    # 8g. Fix ExpoReactDelegate.swift
     rd_path = os.path.join(core_dir, 'ReactDelegates', 'ExpoReactDelegate.swift')
     if os.path.exists(rd_path):
         with open(rd_path, 'r', encoding='utf-8') as f:
             c = f.read()
-        old_decl = "@objc\n  public func createRootViewController() -> UIViewController {"
-        new_decl = "@MainActor\n  @objc\n  public func createRootViewController() -> UIViewController {"
-        if old_decl in c:
-            c = c.replace(old_decl, new_decl)
-        else:
-            c = re.sub(r'@objc\s+public func createRootViewController\(\)', '@MainActor\n  @objc\n  public func createRootViewController()', c)
+        # Clean any duplicated @MainActor
+        while "@MainActor\n  @MainActor" in c:
+            c = c.replace("@MainActor\n  @MainActor", "@MainActor")
+        if "@MainActor\n  @objc\n  public func createRootViewController" not in c and "@MainActor" not in c:
+            c = c.replace("@objc\n  public func createRootViewController() -> UIViewController {", "@MainActor\n  @objc\n  public func createRootViewController() -> UIViewController {")
         with open(rd_path, 'w', encoding='utf-8', newline='\n') as f:
             f.write(c)
         print("Patched ExpoReactDelegate.swift")
 
-    # 8g. Fix PersistentFileLog.swift
+    # 8h. Fix PersistentFileLog.swift
     pfl_path = os.path.join(core_dir, 'Core', 'Logging', 'PersistentFileLog.swift')
     if os.path.exists(pfl_path):
         with open(pfl_path, 'r', encoding='utf-8') as f:
@@ -620,55 +696,73 @@ def patch_expo_modules_core_sources():
             f.write(c)
         print("Patched PersistentFileLog.swift")
 
-    # 8h. Fix SceneGeometry.swift
+    # 8i. Fix SceneGeometry.swift
     sg_path = os.path.join(core_dir, 'Utilities', 'SceneGeometry.swift')
     if os.path.exists(sg_path):
         with open(sg_path, 'r', encoding='utf-8') as f:
             c = f.read()
-        c = c.replace("public enum SceneGeometry {", "@MainActor\npublic enum SceneGeometry {")
-        c = c.replace("public extension SceneGeometry {", "@MainActor\npublic extension SceneGeometry {")
+        while "@MainActor\n@MainActor" in c:
+            c = c.replace("@MainActor\n@MainActor", "@MainActor")
+        if "@MainActor\npublic enum SceneGeometry" not in c:
+            c = c.replace("public enum SceneGeometry {", "@MainActor\npublic enum SceneGeometry {")
+        if "@MainActor\npublic extension SceneGeometry" not in c:
+            c = c.replace("public extension SceneGeometry {", "@MainActor\npublic extension SceneGeometry {")
         with open(sg_path, 'w', encoding='utf-8', newline='\n') as f:
             f.write(c)
         print("Patched SceneGeometry.swift")
 
-    # 8i. Fix SwiftUIViewFrameObserver.swift
+    # 8j. Fix SharedObjectRegistry.swift
+    sor_path = os.path.join(core_dir, 'Core', 'SharedObjects', 'SharedObjectRegistry.swift')
+    if os.path.exists(sor_path):
+        with open(sor_path, 'r', encoding='utf-8') as f:
+            c = f.read()
+        if "@unchecked Sendable" not in c:
+            c = c.replace("public final class SharedObjectRegistry: Sendable {", "public final class SharedObjectRegistry: @unchecked Sendable {")
+            with open(sor_path, 'w', encoding='utf-8', newline='\n') as f:
+                f.write(c)
+            print("Patched SharedObjectRegistry.swift")
+
+    # 8k. Fix SwiftUIViewFrameObserver.swift
     fo_path = os.path.join(core_dir, 'Core', 'Views', 'SwiftUI', 'SwiftUIViewFrameObserver.swift')
     if os.path.exists(fo_path):
         with open(fo_path, 'r', encoding='utf-8') as f:
             c = f.read()
-        c = c.replace(
-            "callback(CGRect(origin: view.frame.origin, size: newValue.size))",
-            "MainActor.assumeIsolated { callback(CGRect(origin: view.frame.origin, size: newValue.size)) }"
-        )
-        with open(fo_path, 'w', encoding='utf-8', newline='\n') as f:
-            f.write(c)
-        print("Patched SwiftUIViewFrameObserver.swift")
+        if "MainActor.assumeIsolated" not in c:
+            c = c.replace(
+                "callback(CGRect(origin: view.frame.origin, size: newValue.size))",
+                "MainActor.assumeIsolated { callback(CGRect(origin: view.frame.origin, size: newValue.size)) }"
+            )
+            with open(fo_path, 'w', encoding='utf-8', newline='\n') as f:
+                f.write(c)
+            print("Patched SwiftUIViewFrameObserver.swift")
 
-    # 8j. Fix URLAuthenticationChallengeForwardSender.swift
+    # 8l. Fix URLAuthenticationChallengeForwardSender.swift
     uac_path = os.path.join(core_dir, 'DevTools', 'URLAuthenticationChallengeForwardSender.swift')
     if os.path.exists(uac_path):
         with open(uac_path, 'r', encoding='utf-8') as f:
             c = f.read()
-        c = c.replace(
-            "internal final class URLAuthenticationChallengeForwardSender: NSObject, URLAuthenticationChallengeSender {",
-            "internal final class URLAuthenticationChallengeForwardSender: NSObject, @unchecked Sendable, URLAuthenticationChallengeSender {"
-        )
-        with open(uac_path, 'w', encoding='utf-8', newline='\n') as f:
-            f.write(c)
-        print("Patched URLAuthenticationChallengeForwardSender.swift")
+        if "@unchecked Sendable" not in c:
+            c = c.replace(
+                "internal final class URLAuthenticationChallengeForwardSender: NSObject, URLAuthenticationChallengeSender {",
+                "internal final class URLAuthenticationChallengeForwardSender: NSObject, @unchecked Sendable, URLAuthenticationChallengeSender {"
+            )
+            with open(uac_path, 'w', encoding='utf-8', newline='\n') as f:
+                f.write(c)
+            print("Patched URLAuthenticationChallengeForwardSender.swift")
 
-    # 8k. Fix URLSessionSessionDelegateProxy.swift
+    # 8m. Fix URLSessionSessionDelegateProxy.swift
     uss_path = os.path.join(core_dir, 'DevTools', 'URLSessionSessionDelegateProxy.swift')
     if os.path.exists(uss_path):
         with open(uss_path, 'r', encoding='utf-8') as f:
             c = f.read()
-        c = c.replace(
-            "public final class URLSessionSessionDelegateProxy: NSObject, URLSessionDataDelegate {",
-            "public final class URLSessionSessionDelegateProxy: NSObject, @unchecked Sendable, URLSessionDataDelegate {"
-        )
-        with open(uss_path, 'w', encoding='utf-8', newline='\n') as f:
-            f.write(c)
-        print("Patched URLSessionSessionDelegateProxy.swift")
+        if "@unchecked Sendable" not in c:
+            c = c.replace(
+                "public final class URLSessionSessionDelegateProxy: NSObject, URLSessionDataDelegate {",
+                "public final class URLSessionSessionDelegateProxy: NSObject, @unchecked Sendable, URLSessionDataDelegate {"
+            )
+            with open(uss_path, 'w', encoding='utf-8', newline='\n') as f:
+                f.write(c)
+            print("Patched URLSessionSessionDelegateProxy.swift")
 
 patch_expo_modules_core_sources()
 
