@@ -38,4 +38,42 @@ for root, dirs, files in os.walk('.'):
             if 'expo-modules-jsi' not in full_path.lower():
                 fix_package_swift(full_path)
 
-print("All Package.swift files verified and patched for Swift 6.0!")
+# 5. Patch RuntimeScheduler.h for SWIFT_RETURNS_RETAINED
+def patch_runtime_scheduler():
+    path = os.path.join('node_modules', 'expo-modules-jsi', 'apple', 'Sources', 'ExpoModulesJSI-Cxx', 'include', 'RuntimeScheduler.h')
+    if not os.path.exists(path):
+        return
+    try:
+        with open(path, 'r', encoding='utf-8-sig') as f:
+            text = f.read()
+        macro = """#ifndef SWIFT_RETURNS_RETAINED
+#if defined(__has_attribute)
+#if __has_attribute(swift_returns_retained)
+#define SWIFT_RETURNS_RETAINED __attribute__((swift_returns_retained))
+#else
+#define SWIFT_RETURNS_RETAINED
+#endif
+#else
+#define SWIFT_RETURNS_RETAINED
+#endif
+#endif
+"""
+        if "#ifndef SWIFT_RETURNS_RETAINED" not in text:
+            idx = text.find('#ifdef __cplusplus')
+            if idx != -1:
+                insert_pos = text.find('\n', idx) + 1
+                new_text = text[:insert_pos] + '\n' + macro + '\n' + text[insert_pos:]
+            else:
+                new_text = macro + '\n' + text
+            with open(path, 'w', encoding='utf-8', newline='\n') as f:
+                f.write(new_text)
+            print("Patched RuntimeScheduler.h with SWIFT_RETURNS_RETAINED macro")
+        else:
+            print("RuntimeScheduler.h already has SWIFT_RETURNS_RETAINED definition")
+    except Exception as e:
+        print(f"Warning patching RuntimeScheduler.h: {e}")
+
+patch_runtime_scheduler()
+
+print("All Package.swift files and headers verified and patched for Swift 6.0!")
+

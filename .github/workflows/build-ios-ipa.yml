@@ -17,15 +17,13 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Select Xcode 16.2
+        shell: bash
         run: |
-          sudo xcode-select -switch /Applications/Xcode_16.2.app/Contents/Developer
-          export DEVELOPER_DIR=/Applications/Xcode_16.2.app/Contents/Developer
+          set -euo pipefail
+          test -d "$DEVELOPER_DIR" || { echo "Xcode not found at $DEVELOPER_DIR"; ls -la /Applications | grep Xcode || true; exit 1; }
+          sudo xcode-select --switch "$DEVELOPER_DIR"
           xcodebuild -version
           xcodebuild -showsdks
-
-      - name: Ensure iOS platform is installed
-        run: |
-          sudo xcodebuild -downloadPlatform iOS || true
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -36,33 +34,23 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Patch all Package.swift for Swift 6.0 compatibility
+      - name: Patch Expo and Swift Packages
         run: python3 scripts/fix-swift-packages.py
 
       - name: Run Expo Prebuild for iOS
         run: npx expo prebuild --platform ios --no-install
 
-      - name: Post-Prebuild Patch any generated Package.swift
+      - name: Post-Prebuild Patch Native Headers & Packages
         run: python3 scripts/fix-swift-packages.py
 
       - name: Install CocoaPods
-        run: |
-          cd ios
-          pod install
-
-      - name: Pre-build ExpoModulesJSI slice
-        run: |
-          export DEVELOPER_DIR=/Applications/Xcode_16.2.app/Contents/Developer
-          cd node_modules/expo-modules-jsi/apple
-          PODS_ROOT="$GITHUB_WORKSPACE/ios/Pods" \
-          RN_ROOT="$GITHUB_WORKSPACE/node_modules/react-native" \
-          PLATFORM_NAME=iphoneos \
-          ./scripts/build-xcframework.sh
+        working-directory: ios
+        run: pod install
 
       - name: Build iOS App (.app)
+        working-directory: ios
         run: |
-          cd ios
-          WORKSPACE=$(find . -name "*.xcworkspace" -maxdepth 1 | head -n 1)
+          WORKSPACE=$(find . -maxdepth 1 -name "*.xcworkspace" | head -n 1)
           APP_NAME=$(basename "$WORKSPACE" .xcworkspace)
           echo "Targeting App Scheme: $APP_NAME in Workspace: $WORKSPACE"
           
