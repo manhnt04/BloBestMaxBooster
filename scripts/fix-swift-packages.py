@@ -38,42 +38,95 @@ for root, dirs, files in os.walk('.'):
             if 'expo-modules-jsi' not in full_path.lower():
                 fix_package_swift(full_path)
 
-# 5. Patch RuntimeScheduler.h for SWIFT_RETURNS_RETAINED
-def patch_runtime_scheduler():
-    path = os.path.join('node_modules', 'expo-modules-jsi', 'apple', 'Sources', 'ExpoModulesJSI-Cxx', 'include', 'RuntimeScheduler.h')
-    if not os.path.exists(path):
-        return
-    try:
-        with open(path, 'r', encoding='utf-8-sig') as f:
-            text = f.read()
-        macro = """#ifndef SWIFT_RETURNS_RETAINED
-#if defined(__has_attribute)
-#if __has_attribute(swift_returns_retained)
-#define SWIFT_RETURNS_RETAINED __attribute__((swift_returns_retained))
-#else
-#define SWIFT_RETURNS_RETAINED
+# 5. Patch C++ headers (RuntimeScheduler.h & HostFunctionClosure.h) for Swift initializers
+def patch_cxx_headers():
+    rsh_path = os.path.join('node_modules', 'expo-modules-jsi', 'apple', 'Sources', 'ExpoModulesJSI-Cxx', 'include', 'RuntimeScheduler.h')
+    if os.path.exists(rsh_path):
+        try:
+            with open(rsh_path, 'r', encoding='utf-8-sig') as f:
+                text = f.read()
+            
+            # Ensure proper macros
+            macros = """#ifndef SWIFT_RETURNS_RETAINED
+#define SWIFT_RETURNS_RETAINED __attribute__((swift_attr("returns_retained")))
 #endif
-#else
-#define SWIFT_RETURNS_RETAINED
-#endif
+#ifndef SWIFT_NAME
+#define SWIFT_NAME(X) __attribute__((swift_name(X)))
 #endif
 """
-        if "#ifndef SWIFT_RETURNS_RETAINED" not in text:
-            idx = text.find('#ifdef __cplusplus')
-            if idx != -1:
-                insert_pos = text.find('\n', idx) + 1
-                new_text = text[:insert_pos] + '\n' + macro + '\n' + text[insert_pos:]
-            else:
-                new_text = macro + '\n' + text
-            with open(path, 'w', encoding='utf-8', newline='\n') as f:
-                f.write(new_text)
-            print("Patched RuntimeScheduler.h with SWIFT_RETURNS_RETAINED macro")
-        else:
-            print("RuntimeScheduler.h already has SWIFT_RETURNS_RETAINED definition")
-    except Exception as e:
-        print(f"Warning patching RuntimeScheduler.h: {e}")
+            if 'SWIFT_NAME' not in text:
+                idx = text.find('#ifdef __cplusplus')
+                if idx != -1:
+                    insert_pos = text.find('\n', idx) + 1
+                    text = text[:insert_pos] + '\n' + macros + '\n' + text[insert_pos:]
+                else:
+                    text = macros + '\n' + text
 
-patch_runtime_scheduler()
+            # Clean constructor declarations (remove SWIFT_RETURNS_RETAINED on ctors)
+            text = text.replace('SWIFT_RETURNS_RETAINED RuntimeScheduler(void *scheduler, ScheduleFn fn)', 'RuntimeScheduler(void *scheduler, ScheduleFn fn)')
+            text = text.replace('SWIFT_RETURNS_RETAINED RuntimeScheduler()', 'RuntimeScheduler()')
+
+            # Add factory methods for Swift init()
+            factory_code = """
+  SWIFT_NAME("init()")
+  SWIFT_RETURNS_RETAINED static RuntimeScheduler* create() {
+    return new RuntimeScheduler();
+  }
+
+  SWIFT_NAME("init(_:_:)")
+  SWIFT_RETURNS_RETAINED static RuntimeScheduler* create(void *scheduler, ScheduleFn fn) {
+    return new RuntimeScheduler(scheduler, fn);
+  }
+"""
+            if 'SWIFT_NAME("init()")' not in text:
+                target_ctor = 'RuntimeScheduler() {}'
+                if target_ctor in text:
+                    text = text.replace(target_ctor, target_ctor + factory_code)
+                else:
+                    target_ctor2 = 'RuntimeScheduler() noexcept {}'
+                    if target_ctor2 in text:
+                        text = text.replace(target_ctor2, target_ctor2 + factory_code)
+            
+            with open(rsh_path, 'w', encoding='utf-8', newline='\n') as f:
+                f.write(text)
+            print("Patched RuntimeScheduler.h with accessible Swift initializers")
+        except Exception as e:
+            print(f"Warning patching RuntimeScheduler.h: {e}")
+
+    hfc_path = os.path.join('node_modules', 'expo-modules-jsi', 'apple', 'Sources', 'ExpoModulesJSI-Cxx', 'include', 'HostFunctionClosure.h')
+    if os.path.exists(hfc_path):
+        try:
+            with open(hfc_path, 'r', encoding='utf-8-sig') as f:
+                text = f.read()
+
+            macros = """#ifndef SWIFT_RETURNS_UNRETAINED
+#define SWIFT_RETURNS_UNRETAINED __attribute__((swift_attr("returns_unretained")))
+#endif
+#ifndef SWIFT_NAME
+#define SWIFT_NAME(X) __attribute__((swift_name(X)))
+#endif
+"""
+            if 'SWIFT_NAME' not in text:
+                text = macros + '\n' + text
+
+            hfc_factory = """
+  SWIFT_NAME("init(_:_:_:)")
+  SWIFT_RETURNS_UNRETAINED static HostFunctionClosure* create(Context context, Closure closure, Deallocator deallocator) {
+    return new HostFunctionClosure(context, closure, deallocator);
+  }
+"""
+            if 'SWIFT_NAME("init(_:_:_:)")' not in text:
+                target_ctor = 'explicit HostFunctionClosure(Context context, Closure closure, Deallocator deallocator) : RetainedSwiftPointer(context, deallocator), _closure(closure) {};'
+                if target_ctor in text:
+                    text = text.replace(target_ctor, target_ctor + hfc_factory)
+
+            with open(hfc_path, 'w', encoding='utf-8', newline='\n') as f:
+                f.write(text)
+            print("Patched HostFunctionClosure.h with accessible Swift initializers")
+        except Exception as e:
+            print(f"Warning patching HostFunctionClosure.h: {e}")
+
+patch_cxx_headers()
 
 # 6. Patch ExpoModulesJSI Swift sources for Swift 6.0 compatibility
 def patch_expo_modules_jsi_sources():
@@ -232,6 +285,35 @@ def patch_expo_modules_jsi_sources():
         with open(actor_path, 'w', encoding='utf-8', newline='\n') as f:
             f.write(content)
         print("Fixed JavaScriptActor.swift isolation calls with withoutActuallyEscaping")
+
+    # 6f. Fix Task+immediate.swift for Swift 6.0 / iOS 18
+    task_path = os.path.join(base_dir, 'Extensions', 'Task+immediate.swift')
+    if os.path.exists(task_path):
+        with open(task_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        old_task_body = """    if #available(macOS 26.0, iOS 26.0, watchOS 26.0, tvOS 26.0, *) {
+      return Task.immediate(name: name, priority: priority, operation: operation)
+    } else {
+      // In the polyfill always use the highest priority and hope it executes earlier.
+      return Task(name: name, priority: .high, operation: operation)
+    }"""
+        new_task_body = """    return Task(priority: .high, operation: operation)"""
+        if old_task_body in content:
+            content = content.replace(old_task_body, new_task_body)
+            with open(task_path, 'w', encoding='utf-8', newline='\n') as f:
+                f.write(content)
+            print("Fixed Task+immediate.swift for Swift 6.0")
+
+    # 6g. Fix extraneous 'consuming:' argument in JavaScriptRuntime.swift
+    rt_path = os.path.join(base_dir, 'Runtime', 'JavaScriptRuntime.swift')
+    if os.path.exists(rt_path):
+        with open(rt_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        if "vector.push_back(consuming: propNameId)" in content:
+            content = content.replace("vector.push_back(consuming: propNameId)", "vector.push_back(propNameId)")
+            with open(rt_path, 'w', encoding='utf-8', newline='\n') as f:
+                f.write(content)
+            print("Fixed vector.push_back(consuming: ...) in JavaScriptRuntime.swift")
 
 patch_expo_modules_jsi_sources()
 
