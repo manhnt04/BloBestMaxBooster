@@ -1,17 +1,17 @@
-﻿import os, sys, shutil
+import os, sys, shutil
 
 def fix_package_swift(file_path):
     if not os.path.exists(file_path):
         return
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, 'r', encoding='utf-8-sig') as f:
             content = f.read()
 
         lines = content.splitlines()
         filtered_lines = [l for l in lines if not l.strip().startswith('// swift-tools-version:')]
         new_content = '// swift-tools-version: 6.0\n' + '\n'.join(filtered_lines) + '\n'
         
-        with open(file_path, 'w', encoding='utf-8') as f:
+        with open(file_path, 'w', encoding='utf-8', newline='\n') as f:
             f.write(new_content)
         print(f"Fixed swift-tools-version in {file_path}")
     except Exception as e:
