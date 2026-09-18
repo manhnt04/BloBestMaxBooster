@@ -164,7 +164,7 @@ def patch_expo_modules_jsi_sources():
                     weak_let_count += 1
     print(f"Patched weak properties with nonisolated(unsafe) in {weak_let_count} files")
 
-    # 6b. Fix trailing comma in JavaScriptRuntime.swift
+    # 6b. Fix JavaScriptRuntime.swift (trailing comma, move consume, create initializers)
     rt_path = os.path.join(base_dir, 'Runtime', 'JavaScriptRuntime.swift')
     if os.path.exists(rt_path):
         with open(rt_path, 'r', encoding='utf-8') as f:
@@ -173,9 +173,19 @@ def patch_expo_modules_jsi_sources():
         new_target = "_ arguments: consuming JavaScriptValuesBuffer\n    ) async throws -> JavaScriptValue"
         if old_target in content:
             content = content.replace(old_target, new_target)
-            with open(rt_path, 'w', encoding='utf-8', newline='\n') as f:
-                f.write(content)
-            print("Fixed trailing comma in JavaScriptRuntime.swift")
+        
+        # Move PropNameID into vector with consume
+        content = content.replace("vector.push_back(consuming: propNameId)", "vector.push_back(consume propNameId)")
+        content = content.replace("vector.push_back(propNameId)", "vector.push_back(consume propNameId)")
+
+        # Call .create() static methods on C++ reference types
+        content = content.replace("self.scheduler = expo.RuntimeScheduler()", "self.scheduler = expo.RuntimeScheduler.create()")
+        content = content.replace("self.scheduler = expo.RuntimeScheduler(scheduler, fn)", "self.scheduler = expo.RuntimeScheduler.create(scheduler, fn)")
+        content = content.replace("return expo.HostFunctionClosure(context, call, deallocate)", "return expo.HostFunctionClosure.create(context, call, deallocate)")
+
+        with open(rt_path, 'w', encoding='utf-8', newline='\n') as f:
+            f.write(content)
+        print("Fixed JavaScriptRuntime.swift (trailing comma, move consume, create initializers)")
 
     # 6c. Fix Escapable in JavaScriptRef.swift and JavaScriptValue.swift
     ref_path = os.path.join(base_dir, 'Runtime', 'JavaScriptRef.swift')
@@ -304,18 +314,6 @@ def patch_expo_modules_jsi_sources():
                 f.write(content)
             print("Fixed Task+immediate.swift for Swift 6.0")
 
-    # 6g. Fix extraneous 'consuming:' argument in JavaScriptRuntime.swift
-    rt_path = os.path.join(base_dir, 'Runtime', 'JavaScriptRuntime.swift')
-    if os.path.exists(rt_path):
-        with open(rt_path, 'r', encoding='utf-8') as f:
-            content = f.read()
-        if "vector.push_back(consuming: propNameId)" in content:
-            content = content.replace("vector.push_back(consuming: propNameId)", "vector.push_back(propNameId)")
-            with open(rt_path, 'w', encoding='utf-8', newline='\n') as f:
-                f.write(content)
-            print("Fixed vector.push_back(consuming: ...) in JavaScriptRuntime.swift")
-
 patch_expo_modules_jsi_sources()
 
 print("All Package.swift files, native headers, and Swift sources verified and patched for Swift 6.0!")
-
