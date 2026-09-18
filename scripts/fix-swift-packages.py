@@ -126,6 +126,25 @@ def patch_cxx_headers():
         except Exception as e:
             print(f"Warning patching HostFunctionClosure.h: {e}")
 
+    hoc_path = os.path.join('node_modules', 'expo-modules-jsi', 'apple', 'Sources', 'ExpoModulesJSI-Cxx', 'include', 'HostObjectCallbacks.h')
+    if os.path.exists(hoc_path):
+        try:
+            with open(hoc_path, 'r', encoding='utf-8-sig') as f:
+                text = f.read()
+            target = "using PropNameIds = std::vector<facebook::jsi::PropNameID>;"
+            helper = """using PropNameIds = std::vector<facebook::jsi::PropNameID>;
+
+  inline static void appendPropName(PropNameIds &vector, facebook::jsi::Runtime &runtime, const std::string &name) {
+    vector.push_back(facebook::jsi::PropNameID::forUtf8(runtime, name));
+  }"""
+            if 'appendPropName' not in text and target in text:
+                text = text.replace(target, helper)
+                with open(hoc_path, 'w', encoding='utf-8', newline='\n') as f:
+                    f.write(text)
+                print("Patched HostObjectCallbacks.h with appendPropName helper")
+        except Exception as e:
+            print(f"Warning patching HostObjectCallbacks.h: {e}")
+
 patch_cxx_headers()
 
 # 6. Patch ExpoModulesJSI Swift sources for Swift 6.0 compatibility
@@ -174,9 +193,25 @@ def patch_expo_modules_jsi_sources():
         if old_target in content:
             content = content.replace(old_target, new_target)
         
-        # Move PropNameID into vector with consume
-        content = content.replace("vector.push_back(consuming: propNameId)", "vector.push_back(consume propNameId)")
-        content = content.replace("vector.push_back(propNameId)", "vector.push_back(consume propNameId)")
+        # Replace push_back loop with C++ appendPropName to bypass non-copyable PropNameID issue in Swift
+        old_loop1 = """      for propertyName in propertyNames {
+        let propNameId = facebook.jsi.PropNameID.forUtf8(iRuntime, std.string(propertyName))
+        vector.push_back(consume propNameId)
+      }"""
+        old_loop2 = """      for propertyName in propertyNames {
+        let propNameId = facebook.jsi.PropNameID.forUtf8(iRuntime, std.string(propertyName))
+        vector.push_back(consuming: propNameId)
+      }"""
+        old_loop3 = """      for propertyName in propertyNames {
+        let propNameId = facebook.jsi.PropNameID.forUtf8(iRuntime, std.string(propertyName))
+        vector.push_back(propNameId)
+      }"""
+        new_loop = """      for propertyName in propertyNames {
+        expo.HostObjectCallbacks.appendPropName(&vector, iRuntime, std.string(propertyName))
+      }"""
+        for old_loop in [old_loop1, old_loop2, old_loop3]:
+            if old_loop in content:
+                content = content.replace(old_loop, new_loop)
 
         # Call .create() static methods on C++ reference types
         content = content.replace("self.scheduler = expo.RuntimeScheduler()", "self.scheduler = expo.RuntimeScheduler.create()")
@@ -185,7 +220,7 @@ def patch_expo_modules_jsi_sources():
 
         with open(rt_path, 'w', encoding='utf-8', newline='\n') as f:
             f.write(content)
-        print("Fixed JavaScriptRuntime.swift (trailing comma, move consume, create initializers)")
+        print("Fixed JavaScriptRuntime.swift (trailing comma, appendPropName, create initializers)")
 
     # 6c. Fix Escapable in JavaScriptRef.swift and JavaScriptValue.swift
     ref_path = os.path.join(base_dir, 'Runtime', 'JavaScriptRef.swift')
