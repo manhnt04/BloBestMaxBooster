@@ -8,6 +8,7 @@ on:
 
 env:
   DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+  EXPO_USE_PRECOMPILED_MODULES: "0"
 
 jobs:
   build-ipa:

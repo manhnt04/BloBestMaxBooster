@@ -454,4 +454,65 @@ def patch_expo_modules_jsi_sources():
 
 patch_expo_modules_jsi_sources()
 
-print("All Package.swift files, native headers, and Swift sources verified and patched for Swift 6.0!")
+# 7. Force all Expo modules to build from source (prevents prebuilt Swift 6.3 mismatch)
+def disable_expo_precompiled_modules():
+    # 7a. Patch precompiled_modules.rb
+    pm_path = os.path.join('node_modules', 'expo-modules-autolinking', 'scripts', 'ios', 'precompiled_modules.rb')
+    if os.path.exists(pm_path):
+        try:
+            with open(pm_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            old_enabled = """      def enabled?
+        return false unless ENV[ENV_VAR] == '1'
+        return true if prebuilt_react_active?"""
+            new_enabled = """      def enabled?
+        return false"""
+            if old_enabled in content:
+                content = content.replace(old_enabled, new_enabled)
+            else:
+                content = re.sub(r'def enabled\?[\s\S]*?return true if prebuilt_react_active\?', 'def enabled?\n        return false', content)
+            with open(pm_path, 'w', encoding='utf-8', newline='\n') as f:
+                f.write(content)
+            print("Patched precompiled_modules.rb to disable precompiled modules (force build from source)")
+        except Exception as e:
+            print(f"Warning patching precompiled_modules.rb: {e}")
+
+    # 7b. Patch ExpoModulesCore.podspec
+    emc_path = os.path.join('node_modules', 'expo-modules-core', 'ExpoModulesCore.podspec')
+    if os.path.exists(emc_path):
+        try:
+            with open(emc_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            old_cond = "if (!Expo::PackagesConfig.instance.try_link_with_prebuilt_xcframework(s))"
+            new_cond = "if (true) # force source build to match Xcode compiler"
+            if old_cond in content:
+                content = content.replace(old_cond, new_cond)
+                with open(emc_path, 'w', encoding='utf-8', newline='\n') as f:
+                    f.write(content)
+                print("Patched ExpoModulesCore.podspec to build from source")
+        except Exception as e:
+            print(f"Warning patching ExpoModulesCore.podspec: {e}")
+
+    # 7c. Patch packages_config.rb
+    pkg_path = os.path.join('node_modules', 'expo-modules-autolinking', 'scripts', 'ios', 'packages_config.rb')
+    if os.path.exists(pkg_path):
+        try:
+            with open(pkg_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            old_method = """    def try_link_with_prebuilt_xcframework(spec)
+      Expo::PrecompiledModules.try_link_with_prebuilt_xcframework(spec)
+    end"""
+            new_method = """    def try_link_with_prebuilt_xcframework(spec)
+      false
+    end"""
+            if old_method in content:
+                content = content.replace(old_method, new_method)
+                with open(pkg_path, 'w', encoding='utf-8', newline='\n') as f:
+                    f.write(content)
+                print("Patched packages_config.rb to return false for try_link_with_prebuilt_xcframework")
+        except Exception as e:
+            print(f"Warning patching packages_config.rb: {e}")
+
+disable_expo_precompiled_modules()
+
+print("All Package.swift files, native headers, Swift sources, and CocoaPods specs verified and patched for Swift 6.0!")
